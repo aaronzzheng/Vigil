@@ -1,4 +1,6 @@
 import AppKit
+import ApplicationServices
+import CoreGraphics
 import IOKit.pwr_mgt
 
 /// Holds power assertions while a condition says the Mac should stay awake, and
@@ -64,6 +66,7 @@ final class SleepGuard: ObservableObject {
     @Published var keepDisplayOn = false { didSet { persist(); evaluate() } }
     @Published var trigger: Trigger = .frontmost { didSet { persist(); evaluate() } }
     @Published var watchedBundleIDs: [String] = [] { didSet { persist(); evaluate() } }
+    @Published var staysActive = false { didSet { persist(); staysActiveChanged() } }
 
     /// Why we are currently holding the Mac awake, or nil when we are not.
     @Published private(set) var reason: String?
@@ -73,6 +76,11 @@ final class SleepGuard: ObservableObject {
     private var systemAssertion: IOPMAssertionID = 0
     private var displayAssertion: IOPMAssertionID = 0
     private var timer: Timer?
+    private var hasRequestedAccessibility = false
+
+    /// Teams and Slack go idle after several minutes, so nudging well inside that
+    /// keeps them green while injecting as few events as possible.
+    private static let idleNudgeThreshold: Double = 25
 
     private let defaults = UserDefaults.standard
 
@@ -85,6 +93,7 @@ final class SleepGuard: ObservableObject {
         keepDisplayOn = defaults.bool(forKey: "Vigil.keepDisplayOn")
         if let raw = defaults.string(forKey: "Vigil.trigger"),
            let value = Trigger(rawValue: raw) { trigger = value }
+        staysActive = defaults.bool(forKey: "Vigil.staysActive")
     }
 
     func start() {
@@ -92,6 +101,7 @@ final class SleepGuard: ObservableObject {
         refreshBlockers()
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.evaluate()
+            self?.nudgeIfIdle()
             self?.refreshBlockers()
         }
     }
@@ -106,6 +116,7 @@ final class SleepGuard: ObservableObject {
         defaults.set(watchedBundleIDs, forKey: "Vigil.watched")
         defaults.set(keepDisplayOn, forKey: "Vigil.keepDisplayOn")
         defaults.set(trigger.rawValue, forKey: "Vigil.trigger")
+        defaults.set(staysActive, forKey: "Vigil.staysActive")
     }
 
     // MARK: Conditions
@@ -128,21 +139,74 @@ final class SleepGuard: ObservableObject {
             return
         }
 
-        var newReason: String?
+        var assertionReason: String?
         if isManuallyOn {
-            newReason = manualExpiry == nil
+            assertionReason = manualExpiry == nil
                 ? "Keeping awake"
                 : "Keeping awake until \(Self.timeFormatter.string(from: manualExpiry!))"
         } else if let app = matchingWatchedApp() {
-            newReason = "\(app) \(trigger.rawValue)"
+            assertionReason = "\(app) \(trigger.rawValue)"
         }
 
-        if let newReason {
-            hold(named: newReason)
+        if let assertionReason {
+            hold(named: assertionReason)
         } else {
             release()
         }
-        if newReason != reason { reason = newReason }
+
+        // Staying active holds no assertion — it resets the idle clock instead —
+        // but it does keep the Mac up, so it belongs in the status line.
+        var display = assertionReason
+        if staysActive {
+            let label = AXIsProcessTrusted() ? "Staying active"
+                                             : "Staying active (needs Accessibility)"
+            display = display.map { "\($0) · \(label)" } ?? label
+        }
+        if display != reason { reason = display }
+    }
+
+    // MARK: Staying active
+
+    private func staysActiveChanged() {
+        if staysActive, !AXIsProcessTrusted() { requestAccessibility() }
+        evaluate()
+    }
+
+    /// Posts a mouse-moved event at the cursor's *current* position. It is a real
+    /// HID event, so the idle clock resets, but the pointer does not move — unlike
+    /// a jiggler, it never fights you for the cursor.
+    ///
+    /// `IOPMAssertionDeclareUserActivity` looks like the right call here and is
+    /// not: it returns success while the idle counters keep climbing, so apps
+    /// reading idle time never see it.
+    private func nudgeIfIdle() {
+        guard staysActive, AXIsProcessTrusted() else { return }
+        let idle = CGEventSource.secondsSinceLastEventType(
+            .combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+        guard idle >= Self.idleNudgeThreshold else { return }
+
+        let position = CGEvent(source: nil)?.location ?? .zero
+        CGEvent(mouseEventSource: nil,
+                mouseType: .mouseMoved,
+                mouseCursorPosition: position,
+                mouseButton: .left)?.post(tap: .cghidEventTap)
+    }
+
+    private func requestAccessibility() {
+        guard !hasRequestedAccessibility else { return }
+        hasRequestedAccessibility = true
+
+        let alert = NSAlert()
+        alert.messageText = "Vigil needs Accessibility access to stay active"
+        alert.informativeText = "Resetting the idle clock means posting a real input event, "
+            + "which macOS only allows apps you have trusted. Nothing else in Vigil needs it."
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Later")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+            AXIsProcessTrustedWithOptions(options)
+        }
     }
 
     private func matchingWatchedApp() -> String? {

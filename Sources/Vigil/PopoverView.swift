@@ -61,6 +61,18 @@ struct PopoverView: View {
                 .controlSize(.small)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+
+            Divider().padding(.vertical, 2)
+
+            Toggle("Stay active", isOn: $guard_.staysActive)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .font(.system(size: 12))
+            Text("Resets the idle clock so Teams and Slack stay green. "
+                 + "The pointer never moves.")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

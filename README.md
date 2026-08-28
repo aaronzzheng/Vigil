@@ -28,9 +28,43 @@ why. Inside:
 - **Also stay awake while an app `is frontmost` / `is running`** — pick any apps.
   `is running` is the one for long builds and downloads; `is frontmost` is for apps
   you want awake only while you are actually looking at them.
+- **Stay active** — resets the system idle clock so status apps like Teams and Slack
+  keep showing you as available instead of flipping to away. See below.
 - **Keeping this Mac awake** — every process currently holding a sleep-preventing
   assertion, longest-held first. This is the "why won't my Mac sleep?" answer, and
   it is often something you forgot was open.
+
+## Stay active
+
+Apps that show a presence dot read the system idle clock — seconds since the last
+input event. Vigil resets it by posting a `mouseMoved` event at the cursor's *current
+position* every time idle passes 25 seconds. It is a real HID event, so the clock
+resets; the coordinates are unchanged, so the pointer does not move. Unlike a
+hardware jiggler or a jiggler app, it never yanks the cursor out from under you or
+interrupts a drag.
+
+Idle therefore sawtooths between 0 and ~27 seconds, well inside the several-minute
+threshold those apps use.
+
+This is the one feature that needs a permission: posting input events requires
+Accessibility, requested the first time you switch it on. Nothing else in Vigil needs
+any permission.
+
+Side effect worth knowing: resetting the idle clock also stops idle sleep and display
+sleep, so **Stay active** implies **Keep awake** whether or not that switch is on.
+
+### The obvious API for this does not work
+
+`IOPMAssertionDeclareUserActivity` looks purpose-built and returns success, but the
+idle counters keep climbing straight through it — it moves power management's notion
+of activity, not the HID idle clock that apps actually read. Verify with:
+
+```bash
+ioreg -c IOHIDSystem | grep HIDIdleTime
+```
+
+Watch it climb, call `IOPMAssertionDeclareUserActivity`, watch it keep climbing.
+Posting a real event is the only thing that resets it.
 
 ## There is deliberately no "while audio is playing" option
 
@@ -53,8 +87,8 @@ doing nothing.
 
 - **`VigilApp.swift`** — `@main`, `AppDelegate`, status item, popover, and the
   `SMAppService` login-item switch.
-- **`SleepGuard.swift`** — the conditions, the `IOPMAssertion` hold/release, and the
-  assertion inspector.
+- **`SleepGuard.swift`** — the conditions, the `IOPMAssertion` hold/release, the
+  idle-clock nudge, and the assertion inspector.
 - **`PopoverView.swift`** — the SwiftUI popover.
 
 Conditions are re-evaluated every 2 seconds. When one holds, Vigil takes an
@@ -73,3 +107,6 @@ behalf of another process to the app that actually caused them.
   to release another process's assertion — that is the owning app's business.
 - Watched apps are stored by bundle identifier, so two copies of the same app are
   indistinguishable.
+- **Stay active** injects an input event every ~25 seconds of idle. That is
+  indistinguishable from real activity to anything reading the idle clock, which is
+  the point, but it means your machine reports you as present when you are not.
