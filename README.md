@@ -30,9 +30,28 @@ why. Inside:
   you want awake only while you are actually looking at them.
 - **Stay active** — resets the system idle clock so status apps like Teams and Slack
   keep showing you as available instead of flipping to away. See below.
+- **Weekdays only, from … to …** — gates the automatic conditions to your hours, so
+  Stay active is not quietly holding you green at 3am on a Sunday.
+- **Pause on battery below …%** — drops every hold, manual included, once the battery
+  falls past your floor while unplugged. On by default at 20%.
 - **Keeping this Mac awake** — every process currently holding a sleep-preventing
   assertion, longest-held first. This is the "why won't my Mac sleep?" answer, and
   it is often something you forgot was open.
+
+## Hours and battery
+
+The two limits differ on purpose:
+
+- **The schedule gates the automatic conditions only** — Stay active and watched apps.
+  Flipping **Keep awake** by hand at midnight is an explicit act and is honoured
+  whatever the clock says. Set-and-forget conditions get a curfew; a deliberate switch
+  does not.
+- **The battery floor overrides everything, manual holds included.** A hold you forgot
+  about flattening a laptop in a bag is the one failure mode of this app that actually
+  costs you something, so it wins.
+
+Hours run Monday to Friday, and a window whose end is before its start is treated as
+crossing midnight.
 
 ## Stay active
 
@@ -101,6 +120,8 @@ behalf of another process to the app that actually caused them.
 
 - Conditions are ORed. Any one of them holds the Mac awake; there is no way to
   require several at once.
+- The schedule is weekdays-only and hour-granular. There is no per-day control and no
+  minutes.
 - Vigil prevents *idle* sleep. It cannot stop you closing the lid, and it does not
   override a forced sleep from the Apple menu.
 - The blocker list shows what is asserting, not why it is a good idea. It has no way

@@ -12,6 +12,8 @@ struct PopoverView: View {
             Divider()
             watchSection
             Divider()
+            limitsSection
+            Divider()
             blockerSection
             Divider()
             footer
@@ -151,6 +153,59 @@ struct PopoverView: View {
             guard_.watchedBundleIDs.remove(at: index)
         } else {
             guard_.watchedBundleIDs.append(bundleID)
+        }
+    }
+
+    // MARK: Limits
+
+    private var limitsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Toggle("Weekdays only, from", isOn: $guard_.scheduleEnabled)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
+                    .font(.system(size: 11))
+                Picker("", selection: $guard_.scheduleStart) {
+                    ForEach(0..<24, id: \.self) { Text(Self.hour($0)).tag($0) }
+                }
+                .labelsHidden().controlSize(.small).fixedSize()
+                .disabled(!guard_.scheduleEnabled)
+                Text("to").font(.system(size: 11)).foregroundStyle(.secondary)
+                Picker("", selection: $guard_.scheduleEnd) {
+                    ForEach(0..<24, id: \.self) { Text(Self.hour($0)).tag($0) }
+                }
+                .labelsHidden().controlSize(.small).fixedSize()
+                .disabled(!guard_.scheduleEnabled)
+            }
+
+            HStack(spacing: 6) {
+                Toggle("Pause on battery below", isOn: $guard_.batteryFloorEnabled)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
+                    .font(.system(size: 11))
+                Picker("", selection: $guard_.batteryFloor) {
+                    ForEach([10, 15, 20, 30, 40, 50], id: \.self) { Text("\($0)%").tag($0) }
+                }
+                .labelsHidden().controlSize(.small).fixedSize()
+                .disabled(!guard_.batteryFloorEnabled)
+            }
+
+            Text("Hours gate the automatic conditions. A manual Keep awake always wins, "
+                 + "except on low battery.")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private static func hour(_ value: Int) -> String {
+        switch value {
+        case 0: return "12 AM"
+        case 12: return "12 PM"
+        case ..<12: return "\(value) AM"
+        default: return "\(value - 12) PM"
         }
     }
 
