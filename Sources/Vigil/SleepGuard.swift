@@ -86,6 +86,9 @@ final class SleepGuard: ObservableObject {
 
     private var systemAssertion: IOPMAssertionID = 0
     private var displayAssertion: IOPMAssertionID = 0
+    /// The reason the current assertions were created under, so they can be
+    /// re-taken when it changes and `pmset -g assertions` never shows a stale one.
+    private var heldName: String?
     private var timer: Timer?
     private var hasRequestedAccessibility = false
 
@@ -151,7 +154,10 @@ final class SleepGuard: ObservableObject {
         let parts = Calendar.current.dateComponents([.hour, .weekday], from: Date())
         guard let hour = parts.hour, let weekday = parts.weekday else { return true }
         guard (2...6).contains(weekday) else { return false }   // 1 == Sunday
-        if scheduleStart <= scheduleEnd { return hour >= scheduleStart && hour < scheduleEnd }
+        // "9 AM to 9 AM" can only mean the whole day; an empty window would make
+        // the checkbox silently switch everything off.
+        if scheduleStart == scheduleEnd { return true }
+        if scheduleStart < scheduleEnd { return hour >= scheduleStart && hour < scheduleEnd }
         return hour >= scheduleStart || hour < scheduleEnd      // window crossing midnight
     }
 
@@ -311,6 +317,10 @@ final class SleepGuard: ObservableObject {
     // MARK: Assertions
 
     private func hold(named name: String) {
+        // A hold that outlives its reason — a timed one turning into a watched-app
+        // one, say — would keep advertising the old reason to the system.
+        if heldName != name, systemAssertion != 0 { release() }
+        heldName = name
         if systemAssertion == 0 {
             IOPMAssertionCreateWithName(
                 kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
@@ -340,6 +350,7 @@ final class SleepGuard: ObservableObject {
             IOPMAssertionRelease(displayAssertion)
             displayAssertion = 0
         }
+        heldName = nil
     }
 
     // MARK: Who else is keeping us awake
