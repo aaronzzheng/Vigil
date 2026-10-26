@@ -267,6 +267,10 @@ final class SleepGuard: ObservableObject {
     private func nudgeIfIdle() {
         guard staysActive, isWithinSchedule, AXIsProcessTrusted() else { return }
         guard batteryPause() == nil else { return }
+        // Locked, or the display already asleep, means you have walked away: status
+        // apps notice the lock anyway, and a HID event here would wake the screen
+        // every 25 seconds all night.
+        guard !Self.isScreenLockedOrAsleep() else { return }
         let idle = CGEventSource.secondsSinceLastEventType(
             .combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
         guard idle >= Self.idleNudgeThreshold else { return }
@@ -276,6 +280,12 @@ final class SleepGuard: ObservableObject {
                 mouseType: .mouseMoved,
                 mouseCursorPosition: position,
                 mouseButton: .left)?.post(tap: .cghidEventTap)
+    }
+
+    private static func isScreenLockedOrAsleep() -> Bool {
+        if CGDisplayIsAsleep(CGMainDisplayID()) != 0 { return true }
+        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+        return (session["CGSSessionScreenIsLocked"] as? Bool) ?? false
     }
 
     private func requestAccessibility() {

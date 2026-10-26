@@ -14,7 +14,9 @@ Requires macOS 14+ and Swift 5.9+.
 ```
 
 The bundle is ad-hoc signed (`codesign --sign -`). No developer account, provisioning
-profile, or notarization is involved. Vigil needs no privacy permissions at all.
+profile, or notarization is involved. Only **Stay active** needs a permission
+(Accessibility), and the signature is pinned to the bundle ID so that grant survives
+rebuilds.
 
 ## Using it
 
@@ -71,6 +73,11 @@ any permission.
 
 Side effect worth knowing: resetting the idle clock also stops idle sleep and display
 sleep, so **Stay active** implies **Keep awake** whether or not that switch is on.
+
+It also means the screen saver never starts, so **a Mac set to lock when the screen
+saver or display sleep kicks in will not lock itself while Stay active is running.**
+Lock it yourself (⌃⌘Q) when you walk away. Once the screen is locked, or the display
+is asleep, Vigil stops nudging, so a locked Mac is left to sleep its display as usual.
 
 ### The obvious API for this does not work
 
